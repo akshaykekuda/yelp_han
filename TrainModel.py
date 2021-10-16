@@ -83,8 +83,34 @@ class TrainYelpModel():
                 encoder_optimizer.step()
 
             print("Average loss at epoch {}: {}".format(n, epoch_loss / len(self.dataloader_train)))
-            acc = get_accuracy(self.dataloader_train, encoder)
-            print("Average accuracy at epoch {}: {}".format(n, acc))
+            f1 = get_accuracy(self.dataloader_train, encoder)
+            print("Average F1 at epoch {}: {}".format(n, f1))
 
         return encoder
 
+    def train_HAN(self):
+
+        encoder_output_size = 32
+        encoder = HAN(self.vocab_size, self.vec_size, encoder_output_size, self.weights_matrix)
+        criterion = nn.CrossEntropyLoss()
+        encoder_optimizer = optim.Adam(encoder.parameters(), lr=0.001)
+        epochs = 1
+        for n in range(epochs):
+            epoch_loss = 0
+            for batch in tqdm(self.dataloader_train):
+                encoder.zero_grad()
+                loss = 0
+                output, scores = encoder(batch['indices'])
+                target = batch['category']
+                loss += criterion(output, target)
+                epoch_loss += loss.detach().item()
+                loss.backward()
+                encoder_optimizer.step()
+
+            print("Average loss at epoch {}: {}".format(n, epoch_loss / len(self.dataloader_train)))
+            f1 = get_accuracy(self.dataloader_train, encoder)
+            print("Average Train F1 at epoch {}: {}".format(n, f1))
+            f1 = get_accuracy(self.dataloader_dev, encoder)
+            print("Average Dev F1 at epoch {}: {}".format(n, f1))
+
+        return encoder

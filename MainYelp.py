@@ -50,7 +50,7 @@ for word in vocab.get_itos():
   
 weights_matrix = torch.tensor(weights_matrix)
 train_model = TrainYelpModel(dataloader_train, dataloader_dev, vocab_size, vec_size, weights_matrix)
-encoder = train_model.train_gru_attention()
+encoder = train_model.train_HAN()
 
 test_acc = get_accuracy(dataloader_test, encoder)
 print('Test accuracy for Yelp dataset is {}'.format(test_acc))

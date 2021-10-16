@@ -20,11 +20,9 @@ def get_accuracy(dataloader, model):
     with torch.no_grad():
         for batch in tqdm(dataloader):
             output, scores = model(batch['indices'])
-            for i in range(output.shape[0]):
-                pred = torch.argmax(output[i]).item()
-                target = batch['category'][i]
-                pred_arr.append(pred)
-                target_arr.append(target)
+            pred = torch.argmax(output, axis=1).tolist()
+            pred_arr.extend(pred)
+            target_arr.extend(batch['category'].tolist())
 
     model.train()
     f1 = f1_score(target_arr, pred_arr)
