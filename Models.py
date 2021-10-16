@@ -40,9 +40,9 @@ class EncoderRNN(nn.Module):
         return output, hidden
 
 
-class BinaryClassifier(nn.Module):
+class FFN(nn.Module):
     def __init__(self, input_size):
-        super(BinaryClassifier, self).__init__()
+        super(FFN, self).__init__()
         self.input_size = input_size
 
         self.fcn = nn.Sequential(
@@ -378,11 +378,8 @@ class HAN(nn.Module):
             nn.Linear(2*hidden_size, 64),
             nn.Tanh(),
             nn.Dropout(0.8),
-            nn.Linear(64, 10),
+            nn.Linear(64, 2),
             nn.Tanh(),
-            # nn.Dropout(0.8),
-            nn.Linear(10, 2),
-            nn.Tanh()
         )
 
     def forward(self, inputs):

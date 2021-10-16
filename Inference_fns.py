@@ -14,23 +14,21 @@ from DataLoader_fns import get_indices
 from sklearn.metrics import classification_report, f1_score, mean_squared_error
 
 def get_accuracy(dataloader, model):
-  total_correct = 0
-  with torch.no_grad():
+    pred_arr = []
+    target_arr = []
+    model.eval()
+    with torch.no_grad():
+        for batch in tqdm(dataloader):
+            output, scores = model(batch['indices'])
+            for i in range(output.shape[0]):
+                pred = torch.argmax(output[i]).item()
+                target = batch['category'][i]
+                pred_arr.append(pred)
+                target_arr.append(target)
 
-    for batch in tqdm(dataloader):
-
-      batch_size = len(batch['indices'])
-
-      output, att_scores = model(batch['indices'])
-
-      for i in range(batch_size):
-
-        classification = torch.argmax(output[i]).item()
-        target = batch['category'][i]
-        if target == classification:
-          total_correct+=1
-
-  acc = total_correct/(len(dataloader) * batch_size)
-  print("Accuracy: {}".format(acc))
-  print(classification_report())
-  return acc
+    model.train()
+    f1 = f1_score(target_arr, pred_arr)
+    clr = classification_report(target_arr, pred_arr)
+    print("F1: {}".format(f1))
+    print(clr)
+    return f1
