@@ -1,5 +1,4 @@
 # Hierarchical Attention Network for Yelp Review Classification
-# Hierarchical Attention Network for Yelp Review Classification
 
 DataLoader_fns.py: contains functions needed to create dataloader object (save vocabulary, pad reviews, collate, get indices of a sentence from the vocab)
 
