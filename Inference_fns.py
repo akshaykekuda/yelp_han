@@ -9,24 +9,63 @@ Original file is located at
 import pandas as pd
 from tqdm import tqdm
 import torch
-from torchtext.data.utils import get_tokenizer
-from DataLoader_fns import get_indices
-from sklearn.metrics import classification_report, f1_score, mean_squared_error
+from sklearn.metrics import classification_report, f1_score, accuracy_score
+from sklearn import metrics
+from matplotlib import pyplot as plt
+import torch.nn.functional as F
 
-def get_accuracy(dataloader, model):
+def get_metrics(dataloader, encoder):
+    text_arr = []
+    attn_score_arr = []
     pred_arr = []
-    target_arr = []
-    model.eval()
+    target_arr =[]
+    raw_pred_arr = []
+    encoder.eval()
     with torch.no_grad():
         for batch in tqdm(dataloader):
-            output, scores = model(batch['indices'])
-            pred = torch.argmax(output, axis=1).tolist()
+            output, scores = encoder(batch['indices'], batch['lens'], batch['review_pos_indices'], batch['word_pos_indices'])
+            probs = F.softmax(output, dim=1)
+            max_vals = torch.max(probs, dim=1)
+            raw_proba = max_vals[0].tolist()
+            pred = max_vals[1].tolist()
+            # pred = torch.argmax(output, dim=1).tolist()
+            target = batch['category'].tolist()
+            raw_pred_arr.extend(raw_proba)
             pred_arr.extend(pred)
-            target_arr.extend(batch['category'].tolist())
-
-    model.train()
+            target_arr.extend(target)
+            text_arr.extend(batch['text'])
+            if scores is None:
+                attn_score_arr.extend([None for i in range(len(pred))])
+            else:
+                attn_score_arr.extend(scores.numpy())
+        raw_pred_df = pd.DataFrame(raw_pred_arr, columns=['RawPred Proba'])
+        pred_df = pd.DataFrame(pred_arr, columns=['Pred Category'])
+        target_df = pd.DataFrame(target_arr, columns=['True Category'])
+        df = pd.concat((pred_df, target_df, raw_pred_df), axis=1)
+        df['text'] = text_arr
+        df['scores'] = attn_score_arr
+    encoder.train()
+    print("Sample predictions")
+    print("target:", target_arr[:10])
+    print("prediction:", pred_arr[:10])
+    acc = accuracy_score(target_arr, pred_arr)
     f1 = f1_score(target_arr, pred_arr)
     clr = classification_report(target_arr, pred_arr)
+    print("Accuracy {}".format(acc))
     print("F1: {}".format(f1))
     print(clr)
-    return f1
+    return (acc, f1), df
+
+
+def plot_roc(df, path):
+    plt.clf()
+    y_pred_proba = df['RawPred Proba']
+    y_true = df['True Category']
+    fpr, tpr, _ = metrics.roc_curve(y_true, y_pred_proba)
+    auc = metrics.roc_auc_score(y_true, y_pred_proba).round(2)
+    plt.plot(fpr, tpr, label="auc={}".format(auc))
+    plt.xlabel("False Positivity Rate")
+    plt.xlabel("True Positivity Rate")
+    plt.legend(loc=4)
+    plt.show()
+    plt.savefig(path)

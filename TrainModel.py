@@ -15,102 +15,88 @@ import re
 import random
 
 import numpy as np
-# from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt
 from tqdm import tqdm
 from Models import *
-from Inference_fns import get_accuracy
+from Inference_fns import get_metrics
 from sklearn.utils import class_weight
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class TrainYelpModel():
-    def __init__(self, dataloader_train, dataloader_dev, vocab_size, vec_size, weights_matrix):
+    def __init__(self, dataloader_train, dataloader_dev, vocab_size, vec_size, weights_matrix,
+                 args, max_review_len, max_sent_len):
         self.dataloader_train = dataloader_train
         self.dataloader_dev = dataloader_dev
         self.vocab_size = vocab_size
         self.vec_size = vec_size
         self.weights_matrix = weights_matrix
+        self.max_sent_len = max_sent_len
+        self.max_review_len = max_review_len
+        self.args = args
 
     def train_gru_model(self):
-        encoder_output_size = 32
-        encoder = EncoderRNN(self.vocab_size, self.vec_size, encoder_output_size, self.weights_matrix)
-        classifier = BinaryClassifier(encoder_output_size)
-
+        encoder = EncoderRNN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
         criterion = nn.CrossEntropyLoss()
-
-        encoder_optimizer = optim.Adam(encoder.parameters(), lr=0.001)
-        classifier_optimizer = optim.Adam(classifier.parameters(), lr=0.001)
-
-        epochs = 5
-        for n in range(epochs):
-            epoch_loss = 0
-            for batch in tqdm(self.dataloader_train):
-                encoder.zero_grad()
-                classifier.zero_grad()
-                loss = 0
-                output, hidden = encoder(batch['indices'])
-                output = output[:, -1, :]
-                output = classifier(output)
-                target = batch['category']
-                loss += criterion(output, target)
-                epoch_loss += loss.detach().item()
-                loss.backward()
-                encoder_optimizer.step()
-                classifier_optimizer.step()
-
-            print("Average loss at epoch {}: {}".format(n, epoch_loss / len(self.dataloader_train)))
-            acc = get_accuracy(self.dataloader_train, encoder, classifier)
-            print("Average accuracy at epoch {}: {}".format(n, acc))
-
-        return encoder, classifier
+        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
+        print(encoder)
+        model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
+        return model
 
     def train_gru_attention(self):
-
-        encoder_output_size = 32
-        encoder = GRUAttention(self.vocab_size, self.vec_size, encoder_output_size, self.weights_matrix)
+        encoder = GRUAttention(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
         criterion = nn.CrossEntropyLoss()
-        encoder_optimizer = optim.Adam(encoder.parameters(), lr=0.001)
-        epochs = 5
-        for n in range(epochs):
-            epoch_loss = 0
-            for batch in tqdm(self.dataloader_train):
-                encoder.zero_grad()
-                loss = 0
-                output, scores = encoder(batch['indices'])
-                target = batch['category']
-                loss += criterion(output, target)
-                epoch_loss += loss.detach().item()
-                loss.backward()
-                encoder_optimizer.step()
-
-            print("Average loss at epoch {}: {}".format(n, epoch_loss / len(self.dataloader_train)))
-            f1 = get_accuracy(self.dataloader_train, encoder)
-            print("Average F1 at epoch {}: {}".format(n, f1))
-
-        return encoder
+        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
+        print(encoder)
+        model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
+        return model
 
     def train_HAN(self):
-
-        encoder_output_size = 32
-        encoder = HAN(self.vocab_size, self.vec_size, encoder_output_size, self.weights_matrix)
+        encoder = HAN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
         criterion = nn.CrossEntropyLoss()
-        encoder_optimizer = optim.Adam(encoder.parameters(), lr=0.001)
-        epochs = 1
+        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
+        print(encoder)
+        model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
+        return model
+
+    def train_HSAN(self):
+        encoder = HSAN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
+                       self.max_review_len, self.max_sent_len, self.args.num_heads, self.args.dropout)
+        criterion = nn.CrossEntropyLoss()
+        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
+        print(encoder)
+        model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
+        return model
+
+    def train_model(self, epochs, encoder, criterion, encoder_optimizer):
+        train_acc = []
+        dev_acc = []
+        loss_arr = []
+        encoder.train()
         for n in range(epochs):
             epoch_loss = 0
             for batch in tqdm(self.dataloader_train):
-                encoder.zero_grad()
                 loss = 0
-                output, scores = encoder(batch['indices'])
+                output, scores = encoder(batch['indices'], batch['lens'], batch['review_pos_indices'], batch['word_pos_indices'])
                 target = batch['category']
                 loss += criterion(output, target)
+                encoder_optimizer.zero_grad()
                 epoch_loss += loss.detach().item()
                 loss.backward()
                 encoder_optimizer.step()
-
-            print("Average loss at epoch {}: {}".format(n, epoch_loss / len(self.dataloader_train)))
-            f1 = get_accuracy(self.dataloader_train, encoder)
-            print("Average Train F1 at epoch {}: {}".format(n, f1))
-            f1 = get_accuracy(self.dataloader_dev, encoder)
-            print("Average Dev F1 at epoch {}: {}".format(n, f1))
-
+            avg_epoch_loss = epoch_loss / len(self.dataloader_train)
+            print("Average loss at epoch {}: {}".format(n, avg_epoch_loss))
+            loss_arr.append(avg_epoch_loss)
+            if n % 5 == 4:
+                print("Training metric at end of epoch {}:".format(n))
+                train_metrics, _ = get_metrics(self.dataloader_train, encoder)
+                print("Dev metric at end of epoch {}:".format(n))
+                dev_metrics, _ = get_metrics(self.dataloader_dev, encoder)
+                train_acc.append(train_metrics)
+                dev_acc.append(dev_metrics)
+        plt.plot(loss_arr)
+        plt.show()
+        print("Training Evaluation Metrics: ", train_acc)
+        print("Dev Evaluation Metrics: ", dev_acc)
         return encoder

@@ -10,12 +10,10 @@ Original file is located at
 from torch.utils.data import Dataset
 import numpy as np
 import pandas as pd
-import json
 import torch
 from collections import Counter
 from torchtext.vocab import vocab
 from torchtext.data.utils import get_tokenizer
-import nltk
 from nltk.tokenize import sent_tokenize
 
 scoring_criteria = ['Greeting', 'Professionalism', 'Confidence',
@@ -30,6 +28,8 @@ class YelpDataset(Dataset):
             file_name: The json file to make the dataset from
         """
         self.df = pd.read_json(file_name, lines=True)
+        self.max_review_len, self.max_sent_len = self.get_max_len(self.df)
+
         word_tokenizer = get_tokenizer('basic_english')
         
         binary_cat = []
@@ -39,7 +39,6 @@ class YelpDataset(Dataset):
         #Create target class for each review, build vocab
         for index, row in self.df.iterrows():
             binary_cat.append(row['category'])
-
             sentences = sent_tokenize(row['text'])
             sentences = [s.replace('.', '') for s in sentences]
             reviews.append(sentences)
@@ -48,10 +47,11 @@ class YelpDataset(Dataset):
               counter.update(words)
 
         self.vocab = vocab(counter)
+        self.vocab.insert_token('<pad>', 0)
+        self.vocab.insert_token('<UNK>', 0)
         self.vocab.set_default_index(0)
         self.df['category'] = binary_cat
         self.df['text'] = reviews
-
 
     def __len__(self):
         return len(self.df)
@@ -62,8 +62,20 @@ class YelpDataset(Dataset):
         category = self.df.iloc[idx, 0]
         text = self.df.iloc[idx, 1]
         sample = {'category': category, 'text': text}
-
         return sample
 
     def get_vocab(self):
       return self.vocab
+
+    def get_max_len(self, df):
+        def fun(sent):
+            return len(sent.split())
+        max_review_len = np.max(df.text.apply(lambda x: len(x.split("."))))
+        max_sent_len = np.max(df.text.apply(lambda x: max(map(fun, x.split('.')))))
+        return max_review_len, max_sent_len
+
+    def save_vocab(self, path):
+        import pickle
+        output = open(path, 'wb')
+        pickle.dump(self.vocab, output)
+        output.close()
