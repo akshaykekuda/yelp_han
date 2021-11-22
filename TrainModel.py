@@ -21,9 +21,6 @@ from Models import *
 from Inference_fns import get_metrics
 from sklearn.utils import class_weight
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
 class TrainYelpModel():
     def __init__(self, dataloader_train, dataloader_dev, vocab_size, vec_size, weights_matrix,
                  args, max_review_len, max_sent_len):
@@ -73,6 +70,7 @@ class TrainYelpModel():
         train_acc = []
         dev_acc = []
         loss_arr = []
+        encoder = encoder.to(self.args.device)
         encoder.train()
         for n in range(epochs):
             epoch_loss = 0

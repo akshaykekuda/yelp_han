@@ -21,6 +21,7 @@ def get_metrics(dataloader, encoder):
     target_arr =[]
     raw_pred_arr = []
     encoder.eval()
+    e
     with torch.no_grad():
         for batch in tqdm(dataloader):
             output, scores = encoder(batch['indices'], batch['lens'], batch['review_pos_indices'], batch['word_pos_indices'])

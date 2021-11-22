@@ -15,7 +15,7 @@ from gensim.models.keyedvectors import Word2VecKeyedVectors
 import numpy as np
 import torch
 from TrainModel import TrainYelpModel
-from DataLoader_fns import yelp_collate
+from DataLoader_fns import Collate
 from Inference_fns import get_metrics, plot_roc
 
 np.random.seed(0)
@@ -36,7 +36,7 @@ def _parse_args():
     # General system running and configuration options
     parser.add_argument('--model', type=str, default='baseline', help='model to run')
     parser.add_argument('--batch_size', type=int, default=4, help='batch_size')
-    parser.add_argument('--epochs', type=int, default=10, help='epochs to run')
+    parser.add_argument('--epochs', type=int, default=1, help='epochs to run')
     parser.add_argument('--word_embedding', type=str, default='glove', help='word embedding to use')
     parser.add_argument('--train_path', type=str, default='dataset_train.json', help='path to train set')
     parser.add_argument('--dev_path', type=str, default='dataset_dev.json', help='path to dev set')
@@ -46,6 +46,7 @@ def _parse_args():
     parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
     parser.add_argument('--dropout', type=float, default=0.2, help='dropout rate')
     parser.add_argument('--save_path', type=str, default='test', help='path to save checkpoints')
+    parser.add_argument('--device', type=str, default='cuda', help='device to train')
     args = parser.parse_args()
     return args
 
@@ -63,7 +64,8 @@ def predict_reviews(trainer, dataloader_transcripts_test):
     elif args.model == 'hsan':
         print("running Hierarchical Self Attention Network")
         model = trainer.train_HSAN()
-    torch.save(model, save_path + "yelp_{}.model".format(args.model))
+    ##save state dict
+    torch.save(model.state_dict(), save_path + "yelp_{}.model".format(args.model))
     print('Test Metrics for Yelp dataset is:')
     metrics, pred_df = get_metrics(dataloader_transcripts_test, model)
     plot_roc(pred_df, save_path + "yelp_{}_auc".format(args.model))
@@ -88,12 +90,13 @@ def run_yelp_model():
     max_review_len, max_sent_len = dataset_train.max_review_len, dataset_train.max_sent_len
     vocab = dataset_train.get_vocab()
     dataset_train.save_vocab('vocab')
+    c = Collate(vocab, args.device)
     dataloader_transcripts_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True,
-                                              num_workers=0, collate_fn=yelp_collate)
+                                              num_workers=4, collate_fn=c.yelp_collate)
     dataloader_transcripts_dev = DataLoader(dataset_dev, batch_size=args.batch_size, shuffle=False,
-                                            num_workers=0, collate_fn=yelp_collate)
+                                            num_workers=4, collate_fn=c.yelp_collate)
     dataloader_transcripts_test = DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False,
-                                             num_workers=0, collate_fn=yelp_collate)
+                                             num_workers=4, collate_fn=c.yelp_collate)
 
     print("Start loading glove vectors")
     model = Word2VecKeyedVectors.load_word2vec_format(word_embedding_pt[args.word_embedding])
@@ -118,6 +121,7 @@ def run_yelp_model():
 
 if __name__ == "__main__":
     args = _parse_args()
+    args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("Arguments:", args)
     save_path = 'logs/' + args.save_path + '/'
     os.makedirs(save_path)
