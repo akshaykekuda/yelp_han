@@ -11,63 +11,56 @@ import torch
 from torchtext.data.utils import get_tokenizer
 word_tokenizer = get_tokenizer('basic_english')
 
-
 class Collate:
     def __init__(self, vocab, device):
         self.vocab = vocab
         self.device = device
+        self.count = 0
 
     def pad_review(self, review, max_len):
         num_sents = len(review)
+        review_pos_indices = [i+1 for i in range(num_sents)]
         for i in range(max_len - num_sents):
             review.append('<pad>')
-        return review
+            review_pos_indices.append(0)
+        return review, review_pos_indices
 
     def get_indices(self, sentence, max_sent_len):
         tokens = word_tokenizer(sentence)
         indices = [self.vocab[token] for token in tokens]
         diff = max_sent_len - len(tokens)
+        positional_indices = [i + 1 for i in range(len(tokens))]
         for i in range(diff):
             indices.append(1)  # padding idx=1
-        return indices
-
-    def get_positions(self, text, max_review_len, max_sent_len):
-        num_sents = len(text)
-        word_pos_indices = []
-        review_pos_indices = []
-        for i in range(max_review_len - num_sents):
-            text.append('')
-        for idx, sent in enumerate(text):
-            tokens = word_tokenizer(sent)
-            positional_indices = [i + 1 for i in range(len(tokens))]
-            diff = max_sent_len - len(tokens)
-            for i in range(diff):
-                positional_indices.append(0)
-            word_pos_indices.append(positional_indices)
-            review_pos_indices.append(idx+1 if len(sent) > 1 else 0)
-        return review_pos_indices, word_pos_indices
+            positional_indices.append(0)
+        return indices, positional_indices
 
     def yelp_collate(self, batch):
         max_num_sents = 0
         max_sent_len = 0
         review_len = []
-        for sample in batch:
-            num_sents = len(sample['text'])
+        for i, sample in enumerate(batch):
+            sent_len = []
+            review = sample['text']
+            for sent in review:
+                l = len(word_tokenizer(sent))
+                sent_len.append(l)
+                if l > max_sent_len:
+                    max_sent_len = l
+            num_sents = len(review)
             if num_sents > max_num_sents:
                 max_num_sents = num_sents
-            sent_len = []
-            for sent in sample['text']:
-                sent_len.append(len(word_tokenizer(sent)))
-                if len(word_tokenizer(sent)) > max_sent_len:
-                    max_sent_len = len(word_tokenizer(sent))
             review_len.append(sent_len)
 
         for sample in batch:
-            sample['review_pos_indices'], sample['word_pos_indices'] = self.get_positions(sample['text'], max_num_sents, max_sent_len)
-            sample['text'] = self.pad_review(sample['text'], max_num_sents)
+            review = sample['text']
+            pad_review, sample['review_pos_indices'] = self.pad_review(review, max_num_sents)
             sample['indices'] = []
-            for sent in sample['text']:
-                sample['indices'].append(self.get_indices(sent, max_sent_len))
+            sample['word_pos_indices'] = []
+            for sent in pad_review:
+                indices, positional_indices = self.get_indices(sent, max_sent_len)
+                sample['indices'].append(indices)
+                sample['word_pos_indices'].append(positional_indices)
 
         batch_dict = {'text': [], 'indices': [], 'category': [], 'review_pos_indices': [], 'word_pos_indices': []}
         for sample in batch:

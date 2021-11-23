@@ -10,6 +10,7 @@ Original file is located at
 from __future__ import unicode_literals, print_function, division
 import torch
 import torch.nn as nn
+import numpy as np
 from torch import optim
 import torch.nn.functional as F
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -96,13 +97,21 @@ class GRUAttention(nn.Module):
         )
         self.fcn = FCN(2*hidden_size, dropout_rate)
 
-    def forward(self, inputs, *_):
+    def forward(self, inputs, lens, trans_pos_indices, _):
         embed_output = self.embedding(inputs)
         # print(embed_output)
+        attn_mask = trans_pos_indices == 0
+        sent_lens = (~attn_mask).sum(dim=1)
         embed_output = torch.mean(embed_output, dim=2, keepdim=True).squeeze(2)
-        output, hidden = self.gru(embed_output)
+        pck_seq = torch.nn.utils.rnn.pack_padded_sequence(embed_output, sent_lens, batch_first=True, enforce_sorted=False)
+        output_pckd, word_hidden = self.gru(pck_seq)
+        output, sent_lens = torch.nn.utils.rnn.pad_packed_sequence(output_pckd, batch_first=True, padding_value=0)
+        # output, hidden = self.gru(embed_output)
         attn_weights = self.attn(output)
-        attn_scores = F.softmax(attn_weights, 1)
+        ## mask weights
+        attn_weights_masked = attn_weights.masked_fill(attn_mask.unsqueeze(2), value=-np.inf)
+        # attn_weights = attn_mask.unsqueeze(2) * attn_weights
+        attn_scores = F.softmax(attn_weights_masked, 1)
         out = torch.bmm(output.transpose(1, 2), attn_scores).squeeze(2)
         logits = self.fcn.forward(out)
         return logits, attn_scores.squeeze(2)

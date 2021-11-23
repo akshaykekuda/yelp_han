@@ -94,6 +94,7 @@ class TrainYelpModel():
                 train_acc.append(train_metrics)
                 dev_acc.append(dev_metrics)
         plt.plot(loss_arr)
+        plt.show()
         save_path = 'logs/' + self.args.save_path + '/'
         plt.savefig(save_path+'loss.png')
         print("Training Evaluation Metrics: ", train_acc)

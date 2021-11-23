@@ -105,7 +105,7 @@ def run_yelp_model():
     vec_size = model.vector_size
     vocab_size = len(vocab)
     weights_matrix = np.zeros((vocab_size, vec_size))
-    i = 0
+    i = 2
     for word in vocab.get_itos()[2:]:
         try:
             weights_matrix[i] = model[word]  # model.wv[word] for trained word2vec
