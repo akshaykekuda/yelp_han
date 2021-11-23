@@ -101,7 +101,7 @@ class GRUAttention(nn.Module):
         embed_output = self.embedding(inputs)
         # print(embed_output)
         attn_mask = trans_pos_indices == 0
-        sent_lens = (~attn_mask).sum(dim=1)
+        sent_lens = (~attn_mask).sum(dim=1).cpu()
         embed_output = torch.mean(embed_output, dim=2, keepdim=True).squeeze(2)
         pck_seq = torch.nn.utils.rnn.pack_padded_sequence(embed_output, sent_lens, batch_first=True, enforce_sorted=False)
         output_pckd, word_hidden = self.gru(pck_seq)
