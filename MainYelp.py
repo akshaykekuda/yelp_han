@@ -11,6 +11,7 @@ import argparse
 
 from DatasetClasses import YelpDataset
 from torch.utils.data import DataLoader
+from gensim.models import KeyedVectors
 from gensim.models.keyedvectors import Word2VecKeyedVectors
 import numpy as np
 import torch
@@ -21,7 +22,7 @@ from Inference_fns import get_metrics, plot_roc
 np.random.seed(0)
 torch.manual_seed(0)
 
-word_embedding_pt = dict(glove='../word_embeddings/glove.w2v.txt',
+word_embedding_pt = dict(glove='../word_embeddings/glove_word_vectors',
                          w2v='..word_embeddings/custom_w2v_100d',
                          fasttext='../word_embeddings/fasttext_300d.bin')
 
@@ -92,14 +93,14 @@ def run_yelp_model():
     dataset_train.save_vocab('vocab')
     c = Collate(vocab, args.device)
     dataloader_transcripts_train = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True,
-                                              num_workers=4, collate_fn=c.yelp_collate)
+                                              num_workers=0, collate_fn=c.yelp_collate)
     dataloader_transcripts_dev = DataLoader(dataset_dev, batch_size=args.batch_size, shuffle=False,
-                                            num_workers=4, collate_fn=c.yelp_collate)
+                                            num_workers=0, collate_fn=c.yelp_collate)
     dataloader_transcripts_test = DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False,
-                                             num_workers=4, collate_fn=c.yelp_collate)
+                                             num_workers=0, collate_fn=c.yelp_collate)
 
     print("Start loading glove vectors")
-    model = Word2VecKeyedVectors.load_word2vec_format(word_embedding_pt[args.word_embedding])
+    model = KeyedVectors.load(word_embedding_pt[args.word_embedding], mmap='r')
     print("Finished loading glove vectors")
     vec_size = model.vector_size
     vocab_size = len(vocab)

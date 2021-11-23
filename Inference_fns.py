@@ -21,13 +21,13 @@ def get_metrics(dataloader, encoder):
     target_arr =[]
     raw_pred_arr = []
     encoder.eval()
-    e
     with torch.no_grad():
         for batch in tqdm(dataloader):
             output, scores = encoder(batch['indices'], batch['lens'], batch['review_pos_indices'], batch['word_pos_indices'])
             probs = F.softmax(output, dim=1)
             max_vals = torch.max(probs, dim=1)
-            raw_proba = max_vals[0].tolist()
+            # raw_proba = max_vals[0].tolist()
+            raw_proba = probs[:, 1].cpu()
             pred = max_vals[1].tolist()
             # pred = torch.argmax(output, dim=1).tolist()
             target = batch['category'].tolist()
@@ -38,7 +38,7 @@ def get_metrics(dataloader, encoder):
             if scores is None:
                 attn_score_arr.extend([None for i in range(len(pred))])
             else:
-                attn_score_arr.extend(scores.numpy())
+                attn_score_arr.extend(scores.cpu().numpy())
         raw_pred_df = pd.DataFrame(raw_pred_arr, columns=['RawPred Proba'])
         pred_df = pd.DataFrame(pred_arr, columns=['Pred Category'])
         target_df = pd.DataFrame(target_arr, columns=['True Category'])
@@ -66,7 +66,7 @@ def plot_roc(df, path):
     auc = metrics.roc_auc_score(y_true, y_pred_proba).round(2)
     plt.plot(fpr, tpr, label="auc={}".format(auc))
     plt.xlabel("False Positivity Rate")
-    plt.xlabel("True Positivity Rate")
+    plt.ylabel("True Positivity Rate")
     plt.legend(loc=4)
     plt.show()
     plt.savefig(path)
