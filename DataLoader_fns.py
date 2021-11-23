@@ -31,7 +31,7 @@ class Collate:
         diff = max_sent_len - len(tokens)
         positional_indices = [i + 1 for i in range(len(tokens))]
         for i in range(diff):
-            indices.append(1)  # padding idx=1
+            indices.append(self.vocab['<pad>'])  # padding idx=1
             positional_indices.append(0)
         return indices, positional_indices
 

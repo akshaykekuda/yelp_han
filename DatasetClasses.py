@@ -41,7 +41,7 @@ class YelpDataset(Dataset):
             binary_cat.append(row['category'])
             sentences = sent_tokenize(row['text'])
             sentences = [s.replace('.', '') for s in sentences]
-            reviews.append(sentences)
+            reviews.append([sent for sent in sentences if len(sent) > 0])
             for i in range(len(sentences)):
               words = word_tokenizer(sentences[i])
               counter.update(words)
