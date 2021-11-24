@@ -198,8 +198,8 @@ class HSAN(nn.Module):
         self.sentence_self_attention = SentenceSelfAttention(2 * hidden_size, num_heads, max_trans_len, dropout_rate)
         self.fcn = FCN(2*hidden_size, dropout_rate)
 
-    def forward(self, inputs, lens, trans_pos_indices, _):
-        att1 = self.word_attention.forward(inputs, lens)
+    def forward(self, inputs, lens, trans_pos_indices, word_pos_indices):
+        att1 = self.word_attention.forward(inputs, word_pos_indices)
         att2, sentence_att_scores = self.sentence_self_attention.forward(att1, trans_pos_indices)
         output = self.fcn.forward(att2)
         return output, sentence_att_scores
