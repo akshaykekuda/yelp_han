@@ -70,11 +70,11 @@ def predict_reviews(trainer, dataloader_transcripts_test):
         model = trainer.train_HS2AN()
 
     ##save state dict
-    torch.save(model.state_dict(), save_path + "yelp_{}.model".format(args.model))
+    torch.save(model.state_dict(), args.save_path + "yelp_{}.model".format(args.model))
     print('Test Metrics for Yelp dataset is:')
     metrics, pred_df = get_metrics(dataloader_transcripts_test, model)
-    plot_roc(pred_df, save_path + "yelp_{}_auc".format(args.model))
-    pred_df.to_pickle(save_path + "pred_test_{}.p".format(args.model))
+    plot_roc(pred_df, args.save_path + "yelp_{}_auc".format(args.model))
+    pred_df.to_pickle(args.save_path + "pred_test_{}.p".format(args.model))
     return metrics
 
 
@@ -128,8 +128,7 @@ if __name__ == "__main__":
     args = _parse_args()
     args.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("Arguments:", args)
-    save_path = 'logs/' + args.save_path + '/'
-    os.makedirs(save_path)
+    os.makedirs(args.save_path)
     results = run_yelp_model()
     avg_tuple = [sum(y) / len(y) for y in zip(*results)]
     print("Overall accuracy={} Overall F1 score={}".format(avg_tuple[0], avg_tuple[1]))
