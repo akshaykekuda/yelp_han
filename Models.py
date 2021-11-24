@@ -235,7 +235,7 @@ class SentenceSelfAttention(nn.Module):
         query = key = value = att_in
         attn_output, attn_output_weights = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
         mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
-        # attn_output *= mask_for_pads
+        attn_output *= mask_for_pads
         attn_output = torch.mean(attn_output, dim=1, keepdim=False)
         return attn_output, attn_output_weights.squeeze(2)
 
