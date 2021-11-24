@@ -65,6 +65,10 @@ def predict_reviews(trainer, dataloader_transcripts_test):
     elif args.model == 'hsan':
         print("running Hierarchical Self Attention Network")
         model = trainer.train_HSAN()
+    elif args.model == 'hs2an':
+        print("running Hierarchical Self-Self Attention Network")
+        model = trainer.train_HS2AN()
+
     ##save state dict
     torch.save(model.state_dict(), save_path + "yelp_{}.model".format(args.model))
     print('Test Metrics for Yelp dataset is:')

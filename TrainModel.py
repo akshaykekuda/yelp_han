@@ -66,6 +66,15 @@ class TrainYelpModel():
         model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
         return model
 
+    def train_HS2AN(self):
+        encoder = HS2AN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
+                        self.max_review_len, self.max_sent_len, self.args.num_heads, self.args.dropout)
+        criterion = nn.CrossEntropyLoss()
+        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
+        print(encoder)
+        model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
+        return model
+
     def train_model(self, epochs, encoder, criterion, encoder_optimizer):
         train_acc = []
         dev_acc = []

@@ -131,21 +131,6 @@ class HAN(nn.Module):
         return logits, sentence_att_scores
 
 
-class HSAN(nn.Module):
-    def __init__(self, vocab_size, embedding_size, hidden_size, weights_matrix, max_trans_len,
-                 max_sent_len, num_heads, dropout_rate):
-        super(HSAN, self).__init__()
-        self.word_attention = WordAttention(vocab_size, embedding_size, hidden_size, weights_matrix)
-        self.sentence_self_attention = SentenceSelfAttention(2 * hidden_size, num_heads, max_trans_len, dropout_rate)
-        self.fcn = FCN(2*hidden_size, dropout_rate)
-
-    def forward(self, inputs, lens, trans_pos_indices, _):
-        att1 = self.word_attention.forward(inputs, lens)
-        att2, sentence_att_scores = self.sentence_self_attention.forward(att1, trans_pos_indices)
-        output = self.fcn.forward(att2)
-        return output, sentence_att_scores
-
-
 class SentenceAttention(nn.Module):
     def __init__(self, sentence_embedding_size, hidden_size):
         super(SentenceAttention, self).__init__()
@@ -205,6 +190,37 @@ class WordAttention(nn.Module):
         return sentence_embedding.reshape(*inputs.size()[0:2], -1)
 
 
+class HSAN(nn.Module):
+    def __init__(self, vocab_size, embedding_size, hidden_size, weights_matrix, max_trans_len,
+                 max_sent_len, num_heads, dropout_rate):
+        super(HSAN, self).__init__()
+        self.word_attention = WordAttention(vocab_size, embedding_size, hidden_size, weights_matrix)
+        self.sentence_self_attention = SentenceSelfAttention(2 * hidden_size, num_heads, max_trans_len, dropout_rate)
+        self.fcn = FCN(2*hidden_size, dropout_rate)
+
+    def forward(self, inputs, lens, trans_pos_indices, _):
+        att1 = self.word_attention.forward(inputs, lens)
+        att2, sentence_att_scores = self.sentence_self_attention.forward(att1, trans_pos_indices)
+        output = self.fcn.forward(att2)
+        return output, sentence_att_scores
+
+
+class HS2AN(nn.Module):
+    def __init__(self, vocab_size, embedding_size, hidden_size, weights_matrix, max_trans_len,
+                 max_sent_len, num_heads, dropout_rate):
+        super(HS2AN, self).__init__()
+        self.word_self_attention = WordSelfAttention(vocab_size, embedding_size, 2 * hidden_size, weights_matrix,
+                                                     max_sent_len, num_heads, dropout_rate)
+        self.sentence_self_attention = SentenceSelfAttention(2 * hidden_size, num_heads, max_trans_len, dropout_rate)
+        self.fcn = FCN(2*hidden_size, dropout_rate)
+
+    def forward(self, inputs, lens, trans_pos_indices, word_pos_indices):
+        att1 = self.word_self_attention.forward(inputs, word_pos_indices)
+        att2, sentence_att_scores = self.sentence_self_attention.forward(att1, trans_pos_indices)
+        output = self.fcn.forward(att2)
+        return output, sentence_att_scores
+
+
 class SentenceSelfAttention(nn.Module):
     def __init__(self, embed_dim, num_heads, max_trans_len, dropout_rate):
         super(SentenceSelfAttention, self).__init__()
@@ -234,13 +250,15 @@ class WordSelfAttention(nn.Module):
     def forward(self, inputs, positional_indices):
         embed_output = self.embedding(inputs)
         embed_output_cat = embed_output.view(-1, *embed_output.size()[2:])
-        position_encoding = self.position_encoding(positional_indices)
-        position_encoding_cat = position_encoding.view(-1, *position_encoding.size()[2:])
-        attn_in = embed_output_cat + position_encoding_cat
+        # position_encoding = self.position_encoding(positional_indices)
+        # position_encoding_cat = position_encoding.view(-1, *position_encoding.size()[2:])
+        attn_mask = (inputs == 1).view(-1, *inputs.size()[2:])
+        attn_in = embed_output_cat
         query = key = value = attn_in
-        attn_output, attn_output_weights = self.multihead_attn(query, key, value)
+        attn_output, attn_output_weights = self.multihead_attn(query, key, value, key_padding_mask=attn_mask)
         sent_embedding = torch.mean(attn_output, dim=1, keepdim=False)
         sent_embedding = sent_embedding.reshape(*inputs.size()[0:2], -1)
+        sent_embedding = torch.nan_to_num(sent_embedding)
         sent_embedding = self.ffn(sent_embedding)
         return sent_embedding
 
