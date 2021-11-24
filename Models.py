@@ -143,14 +143,14 @@ class SentenceAttention(nn.Module):
         )
 
     def forward(self, inputs, positional_indices):
-        attn_mask = positional_indices == 0
-        review_lens = (~attn_mask).sum(dim=1).cpu()
+        padding_mask = positional_indices == 0
+        review_lens = (~padding_mask).sum(dim=1).cpu()
         pck_seq = torch.nn.utils.rnn.pack_padded_sequence(inputs, review_lens, batch_first=True, enforce_sorted=False)
         output_pckd, hidden = self.lstm(pck_seq)
         output, review_lens = torch.nn.utils.rnn.pad_packed_sequence(output_pckd, batch_first=True, padding_value=0)
         # output, hidden = self.lstm(inputs)
         attn_weights = self.attn(output)
-        attn_weights_masked = attn_weights.masked_fill(attn_mask.unsqueeze(2), value=-np.inf)
+        attn_weights_masked = attn_weights.masked_fill(padding_mask.unsqueeze(2), value=-np.inf)
         attn_scores = F.softmax(attn_weights_masked, 1)
         out = torch.bmm(output.transpose(1, 2), attn_scores).squeeze(2)
         return out, attn_scores.squeeze(2)
@@ -174,8 +174,8 @@ class WordAttention(nn.Module):
     def forward(self, inputs, positional_indices):
         embed_output = self.embedding(inputs)
         embed_output_cat = embed_output.view(-1, *embed_output.size()[2:])
-        sent_lens = positional_indices == 0
-        sent_lens = (~sent_lens).sum(dim=-1).view(-1).cpu()
+        padding_mask = positional_indices == 0
+        sent_lens = (~padding_mask).sum(dim=-1).view(-1).cpu()
         pck_seq = torch.nn.utils.rnn.pack_padded_sequence(embed_output_cat, sent_lens, batch_first=True, enforce_sorted=False)
         word_out_pckd, word_hidden = self.lstm(pck_seq)
         word_out, sent_lens = torch.nn.utils.rnn.pad_packed_sequence(word_out_pckd, batch_first=True, padding_value=0)
@@ -183,10 +183,9 @@ class WordAttention(nn.Module):
         attn_weights = self.attn(word_out)
         ## mask weights
         ##chnage to use pos indices
-        padding_mask = inputs == 1
         attn_weights_masked = attn_weights.masked_fill(padding_mask.view(-1, *padding_mask.size()[2:]).unsqueeze(dim=2), value=-np.inf)
         attn_scores = F.softmax(attn_weights_masked, 1)
-        attn_scores = torch.nan_to_num(attn_scores)
+        # attn_scores = torch.nan_to_num(attn_scores)
         sentence_embedding = torch.sum(word_out * attn_scores, 1)
         return sentence_embedding.reshape(*inputs.size()[0:2], -1)
 
@@ -235,6 +234,8 @@ class SentenceSelfAttention(nn.Module):
         att_in = inputs
         query = key = value = att_in
         attn_output, attn_output_weights = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
+        mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
+        # attn_output *= mask_for_pads
         attn_output = torch.mean(attn_output, dim=1, keepdim=False)
         return attn_output, attn_output_weights.squeeze(2)
 
