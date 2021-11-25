@@ -182,9 +182,9 @@ class WordAttention(nn.Module):
         # word_out, hidden = self.lstm(embed_output_cat)
         attn_weights = self.attn(word_out)
         ## mask weights
-        ##chnage to use pos indices
-        attn_weights_masked = attn_weights.masked_fill(padding_mask.view(-1, *padding_mask.size()[2:]).unsqueeze(dim=2), value=-np.inf)
-        attn_scores = F.softmax(attn_weights_masked, 1)
+        ##change to use pos indices
+        attn_weights = attn_weights.masked_fill(padding_mask.view(-1, *padding_mask.size()[2:]).unsqueeze(dim=2), value=-np.inf)
+        attn_scores = F.softmax(attn_weights, 1)
         # attn_scores = torch.nan_to_num(attn_scores)
         sentence_embedding = torch.sum(word_out * attn_scores, 1)
         return sentence_embedding.reshape(*inputs.size()[0:2], -1)
@@ -234,8 +234,8 @@ class SentenceSelfAttention(nn.Module):
         att_in = inputs
         query = key = value = att_in
         attn_output, attn_output_weights = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
-        mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
-        attn_output *= mask_for_pads
+        # mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
+        # attn_output *= mask_for_pads
         attn_output = torch.mean(attn_output, dim=1, keepdim=False)
         return attn_output, attn_output_weights.squeeze(2)
 
@@ -258,9 +258,10 @@ class WordSelfAttention(nn.Module):
         attn_in = embed_output_cat
         query = key = value = attn_in
         attn_output, attn_output_weights = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
-        padding_mask = (inputs == 1).view(-1, *inputs.size()[2:])
-        mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
-        attn_output *= mask_for_pads
+        #force pad attention outputs
+        # padding_mask = (inputs == 1).view(-1, *inputs.size()[2:])
+        # mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
+        # attn_output *= mask_for_pads
         sent_embedding = torch.mean(attn_output, dim=1, keepdim=False)
         sent_embedding = sent_embedding.reshape(*inputs.size()[0:2], -1)
         # sent_embedding = torch.nan_to_num(sent_embedding)
