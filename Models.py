@@ -24,7 +24,7 @@ class FCN(nn.Module):
             nn.Tanh(),
             nn.Dropout(dropout_rate),
             nn.Linear(10, 2),
-            nn.Tanh()
+            # nn.Tanh()
         )
 
     def forward(self, x):
