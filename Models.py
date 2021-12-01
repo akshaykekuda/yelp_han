@@ -249,7 +249,6 @@ class WordSelfAttention(nn.Module):
         self.position_encoding = nn.Embedding(max_sent_len, embedding_size, padding_idx=0)
 
     def forward(self, inputs, positional_indices):
-        print(torch.max(positional_indices))
         embed_output = self.embedding(inputs)
         embed_output_cat = embed_output.view(-1, *embed_output.size()[2:])
         position_encoding = self.position_encoding(positional_indices)
