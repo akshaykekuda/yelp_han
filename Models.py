@@ -24,7 +24,6 @@ class FCN(nn.Module):
             nn.Tanh(),
             nn.Dropout(dropout_rate),
             nn.Linear(10, 2),
-            # nn.Tanh()
         )
 
     def forward(self, x):
@@ -228,15 +227,15 @@ class SentenceSelfAttention(nn.Module):
         self.position_encoding = nn.Embedding(max_trans_len, embed_dim, padding_idx=0)
 
     def forward(self, inputs, positional_indices):
-        # positional_encoding = self.position_encoding(positional_indices)
-        # att_in = inputs + positional_encoding
+        positional_encoding = self.position_encoding(positional_indices)
+        att_in = inputs + positional_encoding
         padding_mask = positional_indices == 0
-        att_in = inputs
+        # att_in = inputs
         query = key = value = att_in
         attn_output, attn_output_weights = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
-        # mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
-        # attn_output *= mask_for_pads
-        attn_output = torch.mean(attn_output, dim=1, keepdim=False)
+        mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
+        attn_output *= mask_for_pads
+        attn_output = torch.sum(attn_output, dim=1, keepdim=False)
         return attn_output, attn_output_weights.squeeze(2)
 
 
@@ -250,19 +249,20 @@ class WordSelfAttention(nn.Module):
         self.position_encoding = nn.Embedding(max_sent_len, embedding_size, padding_idx=0)
 
     def forward(self, inputs, positional_indices):
+        print(torch.max(positional_indices))
         embed_output = self.embedding(inputs)
         embed_output_cat = embed_output.view(-1, *embed_output.size()[2:])
-        # position_encoding = self.position_encoding(positional_indices)
-        # position_encoding_cat = position_encoding.view(-1, *position_encoding.size()[2:])
+        position_encoding = self.position_encoding(positional_indices)
+        position_encoding_cat = position_encoding.view(-1, *position_encoding.size()[2:])
         padding_mask = (positional_indices == 0).view(-1, *positional_indices.size()[2:])
-        attn_in = embed_output_cat
+        attn_in = embed_output_cat + position_encoding_cat
         query = key = value = attn_in
         attn_output, attn_output_weights = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
         #force pad attention outputs
-        # padding_mask = (inputs == 1).view(-1, *inputs.size()[2:])
-        # mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
-        # attn_output *= mask_for_pads
-        sent_embedding = torch.mean(attn_output, dim=1, keepdim=False)
+        padding_mask = (inputs == 1).view(-1, *inputs.size()[2:])
+        mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
+        attn_output *= mask_for_pads
+        sent_embedding = torch.sum(attn_output, dim=1, keepdim=False)
         sent_embedding = sent_embedding.reshape(*inputs.size()[0:2], -1)
         # sent_embedding = torch.nan_to_num(sent_embedding)
         sent_embedding = self.ffn(sent_embedding)

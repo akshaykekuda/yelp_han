@@ -92,7 +92,7 @@ def run_yelp_model():
     dataset_train = YelpDataset(args.train_path)
     dataset_dev = YelpDataset(args.dev_path)
     dataset_test = YelpDataset(args.test_path)
-    max_review_len, max_sent_len = dataset_train.max_review_len, dataset_train.max_sent_len
+    max_review_len,  max_sent_len = 256, 512
     vocab = dataset_train.get_vocab()
     dataset_train.save_vocab('vocab')
     c = Collate(vocab, args.device)
