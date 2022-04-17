@@ -150,7 +150,7 @@ class SentenceAttention(nn.Module):
             nn.Linear(hidden_size, 1),
             nn.Tanh()
         )
-        self.cls_token = torch.rand(size=(1, sentence_embedding_size), requires_grad=True)
+        self.cls_token = torch.rand(size=(1, sentence_embedding_size), requires_grad=True, device=device)
 
     def forward(self, inputs, positional_indices):
         bs = inputs.size()[0]
@@ -235,6 +235,25 @@ class HSAN1(nn.Module):
         att2, sentence_att_scores,  = self.sentence_attention.forward(att1, sent_pos_indices)
         # print(sentence_att_scores.shape)
         return att2, sentence_att_scores, None
+
+
+class WordTransformerAttention(nn.Module):
+
+    def __init__(self, vocab_size, embedding_size, model_size, weights_matrix,
+                 max_sent_len, word_nh, dropout_rate, word_num_layers):
+        super(WordTransformerAttention, self).__init__()
+        self.word_self_attention = WordSelfAttention(vocab_size, embedding_size, model_size, weights_matrix,
+                                                     max_sent_len, word_nh, dropout_rate, word_num_layers)
+
+    def forward(self, batch):
+        inputs = batch['indices']
+        word_pos_indices = batch['word_pos_indices']
+        att1 = self.word_self_attention.forward(inputs, word_pos_indices)
+        # att1 = self.layerNorm(att1)
+        output = att1.mean(dim=1)
+        scores = torch.zeros(size=len(inputs))
+        # print(sentence_att_scores.shape)
+        return output, scores, None
 
 
 class HS2AN(nn.Module):
