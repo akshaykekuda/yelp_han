@@ -131,7 +131,7 @@ class HAN(nn.Module):
     def __init__(self, vocab_size, embedding_size, hidden_size, weights_matrix, dropout_rate):
         super(HAN, self).__init__()
         self.word_attention = WordAttention(vocab_size, embedding_size, hidden_size, weights_matrix)
-        self.sentence_attention = SentenceAttention(2 * hidden_size, hidden_size)
+        self.sentence_attention = SentenceAttention(hidden_size, hidden_size)
 
     def forward(self, batch):
         inputs = batch['indices']
@@ -139,7 +139,7 @@ class HAN(nn.Module):
         word_pos_indices = batch['word_pos_indices']
         att1 = self.word_attention.forward(inputs, word_pos_indices)
         att2, sentence_att_scores = self.sentence_attention.forward(att1, sent_pos_indices)
-        return att2, sentence_att_scores
+        return att2, sentence_att_scores, None
 
 
 class SentenceAttention(nn.Module):
