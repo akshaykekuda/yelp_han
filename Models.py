@@ -13,6 +13,8 @@ import torch.nn as nn
 import numpy as np
 from torch import optim
 import torch.nn.functional as F
+import copy
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -30,7 +32,6 @@ class FCN(nn.Module):
         output = self.fcn(x)
         return output
 
-
 class EncoderRNN(nn.Module):
 
     def __init__(self, vocab_size, embedding_size, hidden_size, weights_matrix, dropout_rate):
@@ -41,14 +42,12 @@ class EncoderRNN(nn.Module):
 
         self.hidden_size = hidden_size
         self.gru = nn.GRU(embedding_size, hidden_size, batch_first=True, bidirectional=True)
-        self.fcn = FCN(2*hidden_size, dropout_rate)
 
     def forward(self, inputs, *_):
         embed_output = self.embedding(inputs)
         embed_output = torch.mean(embed_output, dim=2, keepdim=True).squeeze(2)
         output, hidden = self.gru(embed_output)
         output = output[:, -1, :]
-        output = self.fcn(output)
         return output, None
 
 
@@ -59,25 +58,35 @@ class LSTMAttention(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx=1)
         self.embedding.load_state_dict({'weight': weights_matrix})
         self.hidden_size = hidden_size
-        self.lstm = nn.LSTM(embedding_size, hidden_size, num_layers=1, batch_first=True, bidirectional=True)
-
+        self.gru = nn.LSTM(embedding_size, hidden_size, dropout=dropout_rate, num_layers=1, batch_first=True, bidirectional=True, proj_size=hidden_size//2)
         self.attn = nn.Sequential(
-            nn.Linear(2 * hidden_size, hidden_size),
-            nn.Tanh(),
             nn.Linear(hidden_size, 1),
             nn.Tanh()
         )
-        self.fcn = FCN(2*hidden_size, dropout_rate)
+        self.cls_token = torch.rand(size=(1, embedding_size), requires_grad=True, device = device)
 
-    def forward(self, inputs, *_):
+    def forward(self, batch):
+        inputs = batch['indices']
+        sent_pos_indices = batch['sent_pos_indices']
         embed_output = self.embedding(inputs)
+        bs = inputs.size()[0]
+        # print(embed_output)
+        attn_mask = sent_pos_indices == 0
+        trans_lens = (~attn_mask).sum(dim=1).cpu()
         embed_output = torch.mean(embed_output, dim=2, keepdim=True).squeeze(2)
-        output, hidden = self.lstm(embed_output)
+        embed_output = torch.cat((self.cls_token.repeat(bs, 1).unsqueeze(1), embed_output), dim=1)
+        pck_seq = torch.nn.utils.rnn.pack_padded_sequence(embed_output, trans_lens, batch_first=True,
+                                                          enforce_sorted=False)
+        output_pckd, hidden = self.gru(pck_seq)
+        output, trans_lens = torch.nn.utils.rnn.pad_packed_sequence(output_pckd, batch_first=True, padding_value=0)
+        # output, hidden = self.gru(embed_output)
         attn_weights = self.attn(output)
-        attn_scores = F.softmax(attn_weights, 1)
+        ## mask weights
+        attn_weights_masked = attn_weights.masked_fill(attn_mask.unsqueeze(2), value=-np.inf)
+        # attn_weights = attn_mask.unsqueeze(2) * attn_weights
+        attn_scores = F.softmax(attn_weights_masked, 1)
         out = torch.bmm(output.transpose(1, 2), attn_scores).squeeze(2)
-        logits = self.fcn(out)
-        return logits, attn_scores.squeeze(2)
+        return out, attn_scores.squeeze(2), None
 
 
 class GRUAttention(nn.Module):
@@ -94,17 +103,20 @@ class GRUAttention(nn.Module):
             nn.Linear(hidden_size, 1),
             nn.Tanh()
         )
-        self.fcn = FCN(2*hidden_size, dropout_rate)
 
-    def forward(self, inputs, lens, trans_pos_indices, _):
+    def forward(self, batch):
+        inputs = batch['indices']
+        sent_pos_indices = batch['sent_pos_indices']
         embed_output = self.embedding(inputs)
         # print(embed_output)
-        attn_mask = trans_pos_indices == 0
-        review_lens = (~attn_mask).sum(dim=1).cpu()
+        attn_mask = sent_pos_indices == 0
+        trans_lens = (~attn_mask).sum(dim=1).cpu()
         embed_output = torch.mean(embed_output, dim=2, keepdim=True).squeeze(2)
-        pck_seq = torch.nn.utils.rnn.pack_padded_sequence(embed_output, review_lens, batch_first=True, enforce_sorted=False)
+        print(embed_output.shape, trans_lens.shape)
+        pck_seq = torch.nn.utils.rnn.pack_padded_sequence(embed_output, trans_lens, batch_first=True,
+                                                          enforce_sorted=False)
         output_pckd, hidden = self.gru(pck_seq)
-        output, review_lens = torch.nn.utils.rnn.pad_packed_sequence(output_pckd, batch_first=True, padding_value=0)
+        output, trans_lens = torch.nn.utils.rnn.pad_packed_sequence(output_pckd, batch_first=True, padding_value=0)
         # output, hidden = self.gru(embed_output)
         attn_weights = self.attn(output)
         ## mask weights
@@ -112,8 +124,7 @@ class GRUAttention(nn.Module):
         # attn_weights = attn_mask.unsqueeze(2) * attn_weights
         attn_scores = F.softmax(attn_weights_masked, 1)
         out = torch.bmm(output.transpose(1, 2), attn_scores).squeeze(2)
-        logits = self.fcn.forward(out)
-        return logits, attn_scores.squeeze(2)
+        return out, attn_scores.squeeze(2), None
 
 
 class HAN(nn.Module):
@@ -121,32 +132,34 @@ class HAN(nn.Module):
         super(HAN, self).__init__()
         self.word_attention = WordAttention(vocab_size, embedding_size, hidden_size, weights_matrix)
         self.sentence_attention = SentenceAttention(2 * hidden_size, hidden_size)
-        self.fcn = FCN(2*hidden_size, dropout_rate)
 
-    def forward(self, inputs, lens, review_pos_indices, word_pos_indices):
+    def forward(self, batch):
+        inputs = batch['indices']
+        sent_pos_indices = batch['sent_pos_indices']
+        word_pos_indices = batch['word_pos_indices']
         att1 = self.word_attention.forward(inputs, word_pos_indices)
-        att2, sentence_att_scores = self.sentence_attention.forward(att1, review_pos_indices)
-        logits = self.fcn.forward(att2)
-        return logits, sentence_att_scores
+        att2, sentence_att_scores = self.sentence_attention.forward(att1, sent_pos_indices)
+        return att2, sentence_att_scores
 
 
 class SentenceAttention(nn.Module):
     def __init__(self, sentence_embedding_size, hidden_size):
         super(SentenceAttention, self).__init__()
-        self.lstm = nn.LSTM(sentence_embedding_size, hidden_size, batch_first=True, bidirectional=True)
+        self.lstm = nn.LSTM(sentence_embedding_size, hidden_size, batch_first=True, bidirectional=True, proj_size=hidden_size//2)
         self.attn = nn.Sequential(
-            nn.Linear(2 * hidden_size, hidden_size),
-            nn.Tanh(),
             nn.Linear(hidden_size, 1),
             nn.Tanh()
         )
+        self.cls_token = torch.rand(size=(1, sentence_embedding_size), requires_grad=True)
 
     def forward(self, inputs, positional_indices):
+        bs = inputs.size()[0]
+        inputs = torch.cat((self.cls_token.repeat(bs, 1).unsqueeze(1), inputs), dim=1)
         padding_mask = positional_indices == 0
-        review_lens = (~padding_mask).sum(dim=1).cpu()
-        pck_seq = torch.nn.utils.rnn.pack_padded_sequence(inputs, review_lens, batch_first=True, enforce_sorted=False)
+        trans_lens = (~padding_mask).sum(dim=1).cpu()
+        pck_seq = torch.nn.utils.rnn.pack_padded_sequence(inputs, trans_lens, batch_first=True, enforce_sorted=False)
         output_pckd, hidden = self.lstm(pck_seq)
-        output, review_lens = torch.nn.utils.rnn.pad_packed_sequence(output_pckd, batch_first=True, padding_value=0)
+        output, trans_lens = torch.nn.utils.rnn.pad_packed_sequence(output_pckd, batch_first=True, padding_value=0)
         # output, hidden = self.lstm(inputs)
         attn_weights = self.attn(output)
         attn_weights_masked = attn_weights.masked_fill(padding_mask.unsqueeze(2), value=-np.inf)
@@ -162,10 +175,8 @@ class WordAttention(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx=1)
         self.embedding.load_state_dict({'weight': weights_matrix})
         self.hidden_size = hidden_size
-        self.lstm = nn.LSTM(embedding_size, hidden_size, batch_first=True, bidirectional=True)
+        self.lstm = nn.LSTM(embedding_size, hidden_size, batch_first=True, bidirectional=True, proj_size=hidden_size//2)
         self.attn = nn.Sequential(
-            nn.Linear(2 * hidden_size, hidden_size),
-            nn.Tanh(),
             nn.Linear(hidden_size, 1),
             nn.Tanh()
         )
@@ -175,14 +186,16 @@ class WordAttention(nn.Module):
         embed_output_cat = embed_output.view(-1, *embed_output.size()[2:])
         padding_mask = positional_indices == 0
         sent_lens = (~padding_mask).sum(dim=-1).view(-1).cpu()
-        pck_seq = torch.nn.utils.rnn.pack_padded_sequence(embed_output_cat, sent_lens, batch_first=True, enforce_sorted=False)
+        pck_seq = torch.nn.utils.rnn.pack_padded_sequence(embed_output_cat, sent_lens, batch_first=True,
+                                                          enforce_sorted=False)
         word_out_pckd, word_hidden = self.lstm(pck_seq)
         word_out, sent_lens = torch.nn.utils.rnn.pad_packed_sequence(word_out_pckd, batch_first=True, padding_value=0)
         # word_out, hidden = self.lstm(embed_output_cat)
         attn_weights = self.attn(word_out)
         ## mask weights
         ##change to use pos indices
-        attn_weights = attn_weights.masked_fill(padding_mask.view(-1, *padding_mask.size()[2:]).unsqueeze(dim=2), value=-np.inf)
+        attn_weights = attn_weights.masked_fill(padding_mask.view(-1, *padding_mask.size()[2:]).unsqueeze(dim=2),
+                                                value=-np.inf)
         attn_scores = F.softmax(attn_weights, 1)
         # attn_scores = torch.nan_to_num(attn_scores)
         sentence_embedding = torch.sum(word_out * attn_scores, 1)
@@ -191,81 +204,186 @@ class WordAttention(nn.Module):
 
 class HSAN(nn.Module):
     def __init__(self, vocab_size, embedding_size, hidden_size, weights_matrix, max_trans_len,
-                 max_sent_len, num_heads, dropout_rate):
+                 max_sent_len, num_heads, dropout_rate, num_layers):
         super(HSAN, self).__init__()
         self.word_attention = WordAttention(vocab_size, embedding_size, hidden_size, weights_matrix)
-        self.sentence_self_attention = SentenceSelfAttention(2 * hidden_size, num_heads, max_trans_len, dropout_rate)
-        self.fcn = FCN(2*hidden_size, dropout_rate)
-
-    def forward(self, inputs, lens, trans_pos_indices, word_pos_indices):
+        self.sentence_self_attention = SentenceSelfAttention(hidden_size, num_heads, max_trans_len, dropout_rate, num_layers)
+    def forward(self, batch):
+        inputs = batch['indices']
+        sent_pos_indices = batch['sent_pos_indices']
+        word_pos_indices = batch['word_pos_indices']
         att1 = self.word_attention.forward(inputs, word_pos_indices)
-        att2, sentence_att_scores = self.sentence_self_attention.forward(att1, trans_pos_indices)
-        output = self.fcn.forward(att2)
-        return output, sentence_att_scores
+        att2, sentence_att_scores, _ = self.sentence_self_attention.forward(att1, sent_pos_indices)
+        return att2, sentence_att_scores, None
+
+
+class HSAN1(nn.Module):
+    def __init__(self, vocab_size, embedding_size, model_size, weights_matrix,
+                 max_sent_len, word_nh, dropout_rate, num_layers, word_num_layers):
+        super(HSAN1, self).__init__()
+        self.word_self_attention = WordSelfAttention(vocab_size, embedding_size, model_size, weights_matrix,
+                                                     max_sent_len, word_nh, dropout_rate, word_num_layers)
+        self.sentence_attention = SentenceAttention(embedding_size, model_size)
+        self.layerNorm = nn.LayerNorm(model_size)
+
+    def forward(self, batch):
+        inputs = batch['indices']
+        sent_pos_indices = batch['sent_pos_indices']
+        word_pos_indices = batch['word_pos_indices']
+        att1 = self.word_self_attention.forward(inputs, word_pos_indices)
+        # att1 = self.layerNorm(att1)
+        att2, sentence_att_scores,  = self.sentence_attention.forward(att1, sent_pos_indices)
+        # print(sentence_att_scores.shape)
+        return att2, sentence_att_scores, None
 
 
 class HS2AN(nn.Module):
-    def __init__(self, vocab_size, embedding_size, hidden_size, weights_matrix, max_trans_len,
-                 max_sent_len, num_heads, dropout_rate):
+    def __init__(self, vocab_size, embedding_size, model_size, weights_matrix, max_trans_len,
+                 max_sent_len, word_nh, sent_nh, dropout_rate, num_layers, word_num_layers):
         super(HS2AN, self).__init__()
-        self.word_self_attention = WordSelfAttention(vocab_size, embedding_size, 2 * hidden_size, weights_matrix,
-                                                     max_sent_len, num_heads, dropout_rate)
-        self.sentence_self_attention = SentenceSelfAttention(2 * hidden_size, num_heads, max_trans_len, dropout_rate)
-        self.fcn = FCN(2*hidden_size, dropout_rate)
+        self.word_self_attention = WordSelfAttention(vocab_size, embedding_size, model_size, weights_matrix,
+                                                     max_sent_len, word_nh, dropout_rate, word_num_layers)
+        self.sentence_self_attention = SentenceSelfAttention(model_size, sent_nh, max_trans_len, dropout_rate, num_layers)
+        self.layerNorm = nn.LayerNorm(model_size)
+        self.ffn = nn.Linear(embedding_size, model_size)
 
-    def forward(self, inputs, lens, trans_pos_indices, word_pos_indices):
+    def forward(self, batch):
+        inputs = batch['indices']
+        sent_pos_indices = batch['sent_pos_indices']
+        word_pos_indices = batch['word_pos_indices']
         att1 = self.word_self_attention.forward(inputs, word_pos_indices)
-        att2, sentence_att_scores = self.sentence_self_attention.forward(att1, trans_pos_indices)
-        output = self.fcn.forward(att2)
-        return output, sentence_att_scores
+        # att1 = self.layerNorm(att1)
+        att1 = self.ffn(att1)
+        att2, sentence_att_scores, value = self.sentence_self_attention.forward(att1, sent_pos_indices)
+        # print(sentence_att_scores.shape)
+        return att2, sentence_att_scores, value
 
 
 class SentenceSelfAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads, max_trans_len, dropout_rate):
+    def __init__(self, model_size, num_heads, max_trans_len, dropout_rate, num_layers):
         super(SentenceSelfAttention, self).__init__()
-        self.multihead_attn = nn.MultiheadAttention(embed_dim, num_heads, dropout=dropout_rate, batch_first=True)
-        self.position_encoding = nn.Embedding(max_trans_len, embed_dim, padding_idx=0)
+        self.multihead_attn = nn.MultiheadAttention(model_size, num_heads, dropout=dropout_rate, batch_first=True)
+        # self.multihead_attn = CustomMultiHeadAttention(embed_dim, num_heads, dropout=dropout_rate, batch_first=True)
+        self.position_encoding = nn.Embedding(max_trans_len, model_size, padding_idx=0)
+        self.num_layers = num_layers
+        self.cls_token = torch.rand(size=(1, model_size), requires_grad=True, device=device)
 
     def forward(self, inputs, positional_indices):
+        bs = inputs.size()[0]
+        inputs = torch.cat((self.cls_token.repeat(bs, 1).unsqueeze(1), inputs), dim=1)
         positional_encoding = self.position_encoding(positional_indices)
         att_in = inputs + positional_encoding
         padding_mask = positional_indices == 0
-        # att_in = inputs
-        query = key = value = att_in
-        attn_output, attn_output_weights = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
-        mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
-        attn_output *= mask_for_pads
-        attn_output = torch.sum(attn_output, dim=1, keepdim=False)
-        return attn_output, attn_output_weights.squeeze(2)
+        for i in range(self.num_layers):
+            query = key = value = att_in
+            att_in, attn_output_weights = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
+        attn_output = att_in
+        # mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
+        # attn_output *= mask_for_pads
+        # attn_output_inter = torch.mean(attn_output[:, 1:-1, :], dim=1, keepdim=False)
+        # attn_output = torch.cat((attn_output[:, 0, :], attn_output_inter, attn_output[:, -1, :]), dim=-1)
+        attn_output = attn_output[:, 0, :]
+        # attn_output = torch.mean(attn_output, dim=1, keepdim=False)
+        
+        return attn_output, attn_output_weights.squeeze(2), value
 
 
 class WordSelfAttention(nn.Module):
-    def __init__(self, vocab_size, embedding_size, out_dim, weights_matrix, max_sent_len, num_heads, dropout_rate):
+    def __init__(self, vocab_size, embedding_size, out_dim, weights_matrix, max_sent_len, num_heads, dropout_rate, num_layers):
         super(WordSelfAttention, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx=1)
         self.embedding.load_state_dict({'weight': weights_matrix})
         self.multihead_attn = nn.MultiheadAttention(embedding_size, dropout=dropout_rate, num_heads=num_heads, batch_first=True)
+        # self.multihead_attn = CustomMultiHeadAttention(embedding_size, dropout=dropout_rate, num_heads=num_heads, batch_first=True)
+
         self.ffn = nn.Linear(embedding_size, out_dim)
         self.position_encoding = nn.Embedding(max_sent_len, embedding_size, padding_idx=0)
+        self.num_layers=num_layers
 
     def forward(self, inputs, positional_indices):
         embed_output = self.embedding(inputs)
-        embed_output_cat = embed_output.view(-1, *embed_output.size()[2:])
         position_encoding = self.position_encoding(positional_indices)
-        position_encoding_cat = position_encoding.view(-1, *position_encoding.size()[2:])
-        padding_mask = (positional_indices == 0).view(-1, *positional_indices.size()[2:])
-        attn_in = embed_output_cat + position_encoding_cat
-        query = key = value = attn_in
-        attn_output, attn_output_weights = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
-        #force pad attention outputs
-        padding_mask = (inputs == 1).view(-1, *inputs.size()[2:])
-        mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
-        attn_output *= mask_for_pads
-        sent_embedding = torch.sum(attn_output, dim=1, keepdim=False)
+        attn_in = embed_output + position_encoding
+        padding_mask = (positional_indices == 0)
+        bs = len(attn_in)
+        # sent_embedding = torch.empty(size=(bs, embed_output.size()[1], embed_output.size()[3]))
+        # for i in range(bs):
+        #     query = key = value = attn_in[i]
+        #     attn_output, _ = self.multihead_attn(query, key, value, key_padding_mask=padding_mask[i])
+        #     sent_embedding[i] = attn_output[:, 0, :]
+
+        attn_in = attn_in.flatten(0, 1)
+        padding_mask = padding_mask.flatten(0, 1)
+        for i in range(self.num_layers):
+            query = key = value = attn_in
+            attn_in, _ = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
+        attn_output = attn_in
+        sent_embedding = attn_output[:, 0, :]
+
+        # force pad attention outputs
+        # padding_mask = (inputs == 1).view(-1, *inputs.size()[2:])
+        # mask_for_pads = (~padding_mask).unsqueeze(-1).expand(-1, -1, attn_output.size(-1))
+        # attn_output *= mask_for_pads
+        # sent_embedding = torch.mean(attn_output, dim=1, keepdim=False)
         sent_embedding = sent_embedding.reshape(*inputs.size()[0:2], -1)
-        # sent_embedding = torch.nan_to_num(sent_embedding)
-        sent_embedding = self.ffn(sent_embedding)
+        # sent_embedding = torch.na n_to_num(sent_embedding)
         return sent_embedding
 
 
+class MLMNetwork(nn.Module):
+    def __init__(self, embedding_size, tokenizer, dropout_rate, num_heads):
+        super(MLMNetwork, self).__init__()
+        vocab_size = len(tokenizer)
+        pad_idx = tokenizer.pad_token_id
+        self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx=pad_idx)
+        self.multihead_attn = nn.MultiheadAttention(embedding_size, dropout=dropout_rate, num_heads=num_heads,
+                                                    batch_first=True)
+        self.fcn = nn.Linear(embedding_size, vocab_size)
+
+    def forward(self, inputs):
+        embed_output = self.embedding(inputs['input_ids'])
+        padding_mask = inputs['attention_mask'] == 0
+        query = key = value = embed_output
+        attn_out, wt = self.multihead_attn(query, key, value, key_padding_mask=padding_mask)
+        masked_indices = inputs['labels'] != -100
+        masked_out = attn_out[masked_indices]
+        # out = self.fcn(masked_out)
+        out = self.fcn(attn_out)
+        return out
+
+
+
+class EncoderFCN(nn.Module):
+    def __init__(self, encoder, fcn):
+        super(EncoderFCN, self).__init__()
+        self.encoder = encoder
+        self.fcn = fcn
+
+    def forward(self, batch):
+
+        encoder_out, attn_scores, _ = self.encoder.forward(batch)
+        output = self.fcn.forward(encoder_out)
+        return output, attn_scores
+
+
+class EncoderMTL(nn.Module):
+    def __init__(self, encoder, fcn, head, N):
+        super(EncoderMTL, self).__init__()
+        self.encoder = encoder
+        self.fcn = fcn
+        self.mtl_head = get_clones(head, N)
+        self.N = N
+
+    def forward(self, inputs, lens, sent_pos_indices, word_pos_indices):
+        outputs = []
+        encoder_out, attn_scores, value = self.encoder.forward(inputs, lens, sent_pos_indices, word_pos_indices)
+        fcn_output = self.fcn.forward(encoder_out)
+        outputs.append(fcn_output)
+        for i in range(self.N):
+            outputs.append(self.mtl_head[i].forward(encoder_out))
+        return outputs, attn_scores, value
+
+
+def get_clones(module, N):
+    return nn.ModuleList([copy.deepcopy(module) for i in range(N)])
 

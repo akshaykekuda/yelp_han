@@ -1,0 +1,22 @@
+#!/bin/bash
+#SBATCH --account=PAS0536
+#SBATCH --job-name=hs2an
+#SBATCH --nodes=1 --ntasks-per-node=28 --gpus-per-node=1
+#SBATCH --time=2:00:00
+#SBATCH --output="logs/hsan_log"
+
+SAVE_PATH="logs/hs2an_large/"
+LR=1e-5
+DIM=512
+EPOCHS=20
+MODEL='hs2an'
+BS=8
+WORDLAYERS=6
+NLAYERS=3
+SENT_HEADS=8
+HEADS=4
+
+
+echo "HSAN Attention. 256 DIM"
+python MainYelp.py --batch_size $BS --model $MODEL --epochs $EPOCHS --word_nh $HEADS --model_size $DIM --save_path $SAVE_PATH --lr $LR \
+--word_nlayers $WORDLAYERS --num_layers $NLAYERS --sent_nh $SENT_HEADS

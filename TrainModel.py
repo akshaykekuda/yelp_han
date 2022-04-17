@@ -43,36 +43,55 @@ class TrainYelpModel():
 
     def train_gru_attention(self):
         encoder = GRUAttention(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
+        fcn = FCN(self.args.model_size, self.args.dropout)
+        model = EncoderFCN(encoder, fcn)
         criterion = nn.CrossEntropyLoss()
         encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
         print(encoder)
-        model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
+        model = self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
+        return model
+
+    def train_lstm(self):
+        encoder = LSTMAttention(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
+        fcn = FCN(self.args.model_size, self.args.dropout)
+        model = EncoderFCN(encoder, fcn)
+        criterion = nn.CrossEntropyLoss()
+        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
+        print(encoder)
+        model = self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
         return model
 
     def train_HAN(self):
         encoder = HAN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
+        fcn = FCN(self.args.model_size, self.args.dropout)
+        model = EncoderFCN(encoder, fcn)
         criterion = nn.CrossEntropyLoss()
         encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
         print(encoder)
-        model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
+        model = self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
         return model
 
     def train_HSAN(self):
         encoder = HSAN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
-                       self.max_review_len, self.max_sent_len, self.args.num_heads, self.args.dropout)
+                       self.max_review_len, self.max_sent_len, self.args.sent_nh, self.args.dropout, self.args.num_layers)
+        fcn = FCN(self.args.model_size, self.args.dropout)
+        model = EncoderFCN(encoder, fcn)
         criterion = nn.CrossEntropyLoss()
         encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
         print(encoder)
-        model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
+        model = self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
         return model
 
     def train_HS2AN(self):
         encoder = HS2AN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
-                        self.max_review_len, self.max_sent_len, self.args.num_heads, self.args.dropout)
+                            self.max_review_len, self.max_sent_len, self.args.word_nh, self.args.sent_nh, self.args.dropout, self.args.num_layers,
+                            self.args.word_nlayers)
+        fcn = FCN(self.args.model_size, self.args.dropout)
+        model = EncoderFCN(encoder, fcn)
         criterion = nn.CrossEntropyLoss()
         encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
         print(encoder)
-        model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
+        model = self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
         return model
 
     def train_model(self, epochs, encoder, criterion, encoder_optimizer):
@@ -85,7 +104,7 @@ class TrainYelpModel():
             epoch_loss = 0
             for batch in tqdm(self.dataloader_train):
                 loss = 0
-                output, scores = encoder(batch['indices'], batch['lens'], batch['review_pos_indices'], batch['word_pos_indices'])
+                output, scores = encoder(batch)
                 target = batch['category']
                 loss += criterion(output, target)
                 encoder_optimizer.zero_grad()

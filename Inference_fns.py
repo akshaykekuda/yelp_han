@@ -23,7 +23,7 @@ def get_metrics(dataloader, encoder):
     encoder.eval()
     with torch.no_grad():
         for batch in tqdm(dataloader):
-            output, scores = encoder(batch['indices'], batch['lens'], batch['review_pos_indices'], batch['word_pos_indices'])
+            output, scores = encoder(batch)
             probs = F.softmax(output, dim=1)
             max_vals = torch.max(probs, dim=1)
             # raw_proba = max_vals[0].tolist()

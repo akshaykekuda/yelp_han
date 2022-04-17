@@ -47,6 +47,7 @@ class YelpDataset(Dataset):
               counter.update(words)
 
         self.vocab = vocab(counter)
+        self.vocab.insert_token('<cls>', 0)
         self.vocab.insert_token('<pad>', 0)
         self.vocab.insert_token('<UNK>', 0)
         self.vocab.set_default_index(0)

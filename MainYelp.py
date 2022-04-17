@@ -42,12 +42,15 @@ def _parse_args():
     parser.add_argument('--train_path', type=str, default='dataset_train.json', help='path to train set')
     parser.add_argument('--dev_path', type=str, default='dataset_dev.json', help='path to dev set')
     parser.add_argument('--test_path', type=str, default='dataset_test.json', help='path to test set')
-    parser.add_argument('--num_heads', type=int, default=1, help='number of attention heads to use')
+    parser.add_argument('--word_nh', type=int, default=1, help='number of attention heads for word attn')
+    parser.add_argument('--sent_nh', type=int, default=1, help='number of attention heads for sent attn')    
     parser.add_argument('--model_size', type=int, default=64, help='model_size')
     parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
     parser.add_argument('--dropout', type=float, default=0.2, help='dropout rate')
     parser.add_argument('--save_path', type=str, default='test', help='path to save checkpoints')
     parser.add_argument('--device', type=str, default='cuda', help='device to train')
+    parser.add_argument("--num_layers", default=1, type=int, help="num of layers of sentence level self attention")
+    parser.add_argument("--word_nlayers", default=1, type=int, help="num of layers of word level self attention")
     args = parser.parse_args()
     return args
 
@@ -68,6 +71,9 @@ def predict_reviews(trainer, dataloader_transcripts_test):
     elif args.model == 'hs2an':
         print("running Hierarchical Self-Self Attention Network")
         model = trainer.train_HS2AN()
+    elif args.model == 'lstm':
+        print("running LSTM Self Attention Network")
+        model = trainer.train_lstm()
 
     ##save state dict
     torch.save(model.state_dict(), args.save_path + "yelp_{}.model".format(args.model))
