@@ -33,65 +33,44 @@ class TrainYelpModel():
         self.max_review_len = max_review_len
         self.args = args
 
-    def train_gru_model(self):
-        encoder = EncoderRNN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
-        criterion = nn.CrossEntropyLoss()
-        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
-        print(encoder)
-        model = self.train_model(self.args.epochs, encoder, criterion, encoder_optimizer)
-        return model
+    def get_model(self):
 
-    def train_gru_attention(self):
-        encoder = GRUAttention(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
-        fcn = FCN(self.args.model_size, self.args.dropout)
-        model = EncoderFCN(encoder, fcn)
-        criterion = nn.CrossEntropyLoss()
-        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
-        print(encoder)
-        model = self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
-        return model
-
-    def train_lstm(self):
-        encoder = LSTMAttention(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
-        fcn = FCN(self.args.model_size, self.args.dropout)
-        model = EncoderFCN(encoder, fcn)
-        criterion = nn.CrossEntropyLoss()
-        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
-        print(encoder)
-        model = self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
-        return model
-
-    def train_HAN(self):
-        encoder = HAN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
-        fcn = FCN(self.args.model_size, self.args.dropout)
-        model = EncoderFCN(encoder, fcn)
-        criterion = nn.CrossEntropyLoss()
-        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
-        print(encoder)
-        model = self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
-        return model
-
-    def train_HSAN(self):
-        encoder = HSAN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
-                       self.max_review_len, self.max_sent_len, self.args.sent_nh, self.args.dropout, self.args.num_layers)
-        fcn = FCN(self.args.model_size, self.args.dropout)
-        model = EncoderFCN(encoder, fcn)
-        criterion = nn.CrossEntropyLoss()
-        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
-        print(encoder)
-        model = self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
-        return model
-
-    def train_HS2AN(self):
-        encoder = HS2AN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
-                            self.max_review_len, self.max_sent_len, self.args.word_nh, self.args.sent_nh, self.args.dropout, self.args.num_layers,
+        if self.args.model == 'baseline':
+            print("running baseline")
+            encoder = EncoderRNN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
+                                 self.args.dropout)
+        elif self.args.model == 'gru_attention':
+            print("running gru+attention")
+            encoder = GRUAttention(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
+                                   self.args.dropout)
+        elif self.args.model == 'han':
+            print("running Hierarchical Attention Network")
+            encoder = HAN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.args.dropout)
+        elif self.args.model == 'hsan':
+            print("running Hierarchical Self Attention Network")
+            encoder = HSAN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
+                           self.max_review_len, self.max_sent_len, self.args.sent_nh, self.args.dropout,
+                           self.args.num_layers)
+        elif self.args.model == 'hs2an':
+            print("running Hierarchical Self-Self Attention Network")
+            encoder = HS2AN(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
+                            self.max_review_len, self.max_sent_len, self.args.word_nh, self.args.sent_nh,
+                            self.args.dropout, self.args.num_layers,
                             self.args.word_nlayers)
+        elif self.args.model == 'lstm':
+            print("running LSTM Self Attention Network")
+            encoder = LSTMAttention(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
+                                    self.args.dropout)
         fcn = FCN(self.args.model_size, self.args.dropout)
         model = EncoderFCN(encoder, fcn)
+        return model
+
+    def train(self):
+        model = self.get_model()
+        encoder_optimizer = optim.Adam(model.parameters(), lr=self.args.lr)
+        print(model)
         criterion = nn.CrossEntropyLoss()
-        encoder_optimizer = optim.Adam(encoder.parameters(), lr=self.args.lr)
-        print(encoder)
-        model = self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
+        self.train_model(self.args.epochs, model, criterion, encoder_optimizer)
         return model
 
     def train_model(self, epochs, encoder, criterion, encoder_optimizer):
@@ -126,4 +105,3 @@ class TrainYelpModel():
         plt.savefig(self.args.save_path+'loss.png')
         print("Training Evaluation Metrics: ", train_acc)
         print("Dev Evaluation Metrics: ", dev_acc)
-        return encoder

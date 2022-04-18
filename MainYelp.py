@@ -56,25 +56,7 @@ def _parse_args():
 
 
 def predict_reviews(trainer, dataloader_transcripts_test):
-    if args.model == 'baseline':
-        print("running baseline")
-        model = trainer.train_gru_model()
-    elif args.model == 'gru_attention':
-        print("running gru+attention")
-        model = trainer.train_gru_attention()
-    elif args.model == 'han':
-        print("running Hierarchical Attention Network")
-        model = trainer.train_HAN()
-    elif args.model == 'hsan':
-        print("running Hierarchical Self Attention Network")
-        model = trainer.train_HSAN()
-    elif args.model == 'hs2an':
-        print("running Hierarchical Self-Self Attention Network")
-        model = trainer.train_HS2AN()
-    elif args.model == 'lstm':
-        print("running LSTM Self Attention Network")
-        model = trainer.train_lstm()
-
+    model = trainer.train()
     ##save state dict
     torch.save(model.state_dict(), args.save_path + "yelp_{}.model".format(args.model))
     print('Test Metrics for Yelp dataset is:')
