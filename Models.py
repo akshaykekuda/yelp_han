@@ -257,6 +257,22 @@ class WordTransformerAttention(nn.Module):
         return output, scores, None
 
 
+class SentTransformerAttention(nn.Module):
+
+    def __init__(self, model_size, sent_nh, max_trans_len, dropout_rate, num_layers):
+        super(SentTransformerAttention, self).__init__()
+        self.sentence_self_attention = SentenceSelfAttention(model_size, sent_nh, max_trans_len, dropout_rate, num_layers)
+
+    def forward(self, batch):
+        inputs = batch['indices']
+        bs = len(inputs)
+        sent_pos_indices = batch['sent_pos_indices']
+        embed_output = self.embedding(inputs)
+        embed_output = torch.mean(embed_output, dim=2, keepdim=True).squeeze(2)
+        att1, sentence_att_scores, value = self.sentence_self_attention.forward(embed_output, sent_pos_indices)
+        return att1, sentence_att_scores, value
+
+
 class HS2AN(nn.Module):
     def __init__(self, vocab_size, embedding_size, model_size, weights_matrix, max_trans_len,
                  max_sent_len, word_nh, sent_nh, dropout_rate, num_layers, word_num_layers):
