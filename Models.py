@@ -259,9 +259,10 @@ class WordTransformerAttention(nn.Module):
 
 class SentTransformerAttention(nn.Module):
 
-    def __init__(self, model_size, sent_nh, max_trans_len, dropout_rate, num_layers):
+    def __init__(self, vocab_size, embedding_size, model_size, sent_nh, max_trans_len, dropout_rate, num_layers):
         super(SentTransformerAttention, self).__init__()
         self.sentence_self_attention = SentenceSelfAttention(model_size, sent_nh, max_trans_len, dropout_rate, num_layers)
+        self.embedding = nn.Embedding(vocab_size, embedding_size, padding_idx=1)
 
     def forward(self, batch):
         inputs = batch['indices']
