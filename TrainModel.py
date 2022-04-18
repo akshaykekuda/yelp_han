@@ -69,7 +69,7 @@ class TrainYelpModel():
             print("running Sent Transformer Self Attn Model")
             encoder = SentTransformerAttention(self.vocab_size, self.vec_size, self.args.model_size, self.args.sent_nh, self.max_review_len,
                                                self.args.dropout, self.args.num_layers)
-        fcn = FCN(self.args.model_size, self.args.dropout)
+        fcn = FCN(2*self.args.model_size, self.args.dropout)
         model = EncoderFCN(encoder, fcn)
         return model
 
