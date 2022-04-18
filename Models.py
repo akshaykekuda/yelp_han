@@ -247,11 +247,12 @@ class WordTransformerAttention(nn.Module):
 
     def forward(self, batch):
         inputs = batch['indices']
+        bs = len(inputs)
         word_pos_indices = batch['word_pos_indices']
         att1 = self.word_self_attention.forward(inputs, word_pos_indices)
         # att1 = self.layerNorm(att1)
         output = att1.mean(dim=1)
-        scores = torch.zeros(size=len(inputs))
+        scores = torch.zeros(bs)
         # print(sentence_att_scores.shape)
         return output, scores, None
 

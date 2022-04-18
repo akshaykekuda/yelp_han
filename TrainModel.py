@@ -61,6 +61,10 @@ class TrainYelpModel():
             print("running LSTM Self Attention Network")
             encoder = LSTMAttention(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix,
                                     self.args.dropout)
+        elif self.args.model == 'wtsan':
+            print("running Word Transformer Self Attn model")
+            encoder = WordTransformerAttention(self.vocab_size, self.vec_size, self.args.model_size, self.weights_matrix, self.max_sent_len,
+                                               self.args.word_nh, self.args.dropout, self.args.word_nlayers)
         fcn = FCN(self.args.model_size, self.args.dropout)
         model = EncoderFCN(encoder, fcn)
         return model
